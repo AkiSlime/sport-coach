@@ -10,6 +10,48 @@ import { formatTime, estimateDuration } from '@/lib/workout-engine'
 import { useState } from 'react'
 import type { Exercise, PhaseType } from '@/types/workout'
 
+// Suggested exercises per phase type (name + default config)
+const EXERCISE_SUGGESTIONS: Record<PhaseType, { name: string; timed: boolean; duration: number; reps: number; rest: number }[]> = {
+  warmup: [
+    { name: "Cercles d'épaules", timed: true, duration: 30, reps: 0, rest: 0 },
+    { name: 'Rotations de hanches', timed: true, duration: 30, reps: 0, rest: 0 },
+    { name: 'Montées de genoux', timed: true, duration: 60, reps: 0, rest: 0 },
+    { name: 'Squats lents', timed: true, duration: 60, reps: 0, rest: 0 },
+    { name: 'Pompes mur', timed: true, duration: 60, reps: 0, rest: 0 },
+    { name: 'Respiration profonde', timed: true, duration: 30, reps: 0, rest: 0 },
+    { name: 'Talons-fesses', timed: true, duration: 30, reps: 0, rest: 0 },
+    { name: 'Flexions latérales', timed: true, duration: 30, reps: 0, rest: 0 },
+  ],
+  main: [
+    { name: 'Squats', timed: false, duration: 0, reps: 12, rest: 30 },
+    { name: 'Pompes', timed: false, duration: 0, reps: 10, rest: 30 },
+    { name: 'Rowing maison', timed: false, duration: 0, reps: 12, rest: 30 },
+    { name: 'Gainage planche', timed: true, duration: 30, reps: 0, rest: 30 },
+    { name: 'Fentes avant', timed: false, duration: 0, reps: 10, rest: 30 },
+    { name: 'Dips sur chaise', timed: false, duration: 0, reps: 10, rest: 30 },
+    { name: 'Burpees', timed: false, duration: 0, reps: 8, rest: 30 },
+    { name: 'Mountain climbers', timed: true, duration: 30, reps: 0, rest: 30 },
+  ],
+  core: [
+    { name: 'Gainage planche', timed: true, duration: 30, reps: 0, rest: 10 },
+    { name: 'Gainage latéral gauche', timed: true, duration: 20, reps: 0, rest: 10 },
+    { name: 'Gainage latéral droit', timed: true, duration: 20, reps: 0, rest: 10 },
+    { name: 'Superman', timed: false, duration: 0, reps: 10, rest: 0 },
+    { name: 'Crunchs', timed: false, duration: 0, reps: 15, rest: 10 },
+    { name: 'Pont fessier', timed: false, duration: 0, reps: 12, rest: 10 },
+    { name: 'Dead bug', timed: true, duration: 30, reps: 0, rest: 10 },
+  ],
+  cooldown: [
+    { name: 'Étirement poitrine', timed: true, duration: 60, reps: 0, rest: 0 },
+    { name: 'Étirement dos', timed: true, duration: 60, reps: 0, rest: 0 },
+    { name: 'Étirement quadriceps', timed: true, duration: 45, reps: 0, rest: 0 },
+    { name: 'Étirement ischio-jambiers', timed: true, duration: 45, reps: 0, rest: 0 },
+    { name: 'Étirement mollets', timed: true, duration: 30, reps: 0, rest: 0 },
+    { name: 'Étirement épaules', timed: true, duration: 30, reps: 0, rest: 0 },
+    { name: 'Respiration profonde', timed: true, duration: 60, reps: 0, rest: 0 },
+  ],
+}
+
 const PHASE_TYPE_LABELS: Record<PhaseType, string> = {
   warmup: FR.warmup,
   main: FR.main,
@@ -58,6 +100,10 @@ export function EditorPage() {
     exerciseName: string
   } | null>(null)
   const [showAddPhase, setShowAddPhase] = useState(false)
+  const [addExerciseForPhase, setAddExerciseForPhase] = useState<{
+    phaseId: string
+    phaseType: PhaseType
+  } | null>(null)
 
   if (!program || !programId) {
     return (
@@ -349,10 +395,7 @@ export function EditorPage() {
 
                   {/* Add exercise */}
                   <button
-                    onClick={() => {
-                      const isTimed = phase.type !== 'main'
-                      addExercise(programId, phase.id, createDefaultExercise('Nouvel exercice', isTimed))
-                    }}
+                    onClick={() => setAddExerciseForPhase({ phaseId: phase.id, phaseType: phase.type })}
                     className="w-full py-3 text-sm text-slate-500 hover:text-emerald-400 hover:bg-emerald-500/5 rounded-xl transition-all flex items-center justify-center gap-1.5"
                   >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -425,6 +468,70 @@ export function EditorPage() {
             </button>
           ))}
         </div>
+      </Modal>
+
+      {/* Exercise picker modal */}
+      <Modal
+        open={addExerciseForPhase !== null}
+        onClose={() => setAddExerciseForPhase(null)}
+        title="Choisir un exercice"
+      >
+        {addExerciseForPhase && (
+          <div className="space-y-2 max-h-[60vh] overflow-y-auto -mx-1 px-1">
+            {EXERCISE_SUGGESTIONS[addExerciseForPhase.phaseType]
+              .filter((s) => {
+                // Hide exercises already in this phase
+                const phase = program.phases.find((p) => p.id === addExerciseForPhase.phaseId)
+                return !phase?.exercises.some(
+                  (ex) => ex.name.toLowerCase() === s.name.toLowerCase(),
+                )
+              })
+              .map((suggestion) => (
+              <button
+                key={suggestion.name}
+                onClick={() => {
+                  addExercise(programId, addExerciseForPhase.phaseId, {
+                    id: generateId(),
+                    name: suggestion.name,
+                    type: suggestion.timed ? 'timed' : 'reps',
+                    durationSeconds: suggestion.duration,
+                    reps: suggestion.reps,
+                    restAfterSeconds: suggestion.rest,
+                  })
+                  setAddExerciseForPhase(null)
+                }}
+                className="w-full text-left px-4 py-3 rounded-xl transition-all flex items-center justify-between border border-slate-700/30 hover:border-emerald-500/30 bg-slate-800/50 hover:bg-emerald-500/5 group"
+              >
+                <span className="font-medium text-slate-200 text-sm">{suggestion.name}</span>
+                <span className="text-xs text-slate-600 group-hover:text-slate-400">
+                  {suggestion.timed
+                    ? formatTime(suggestion.duration)
+                    : `${suggestion.reps} ${FR.reps}`}
+                </span>
+              </button>
+            ))}
+            {/* Custom exercise option */}
+            <div className="border-t border-slate-800/50 pt-2 mt-2">
+              <button
+                onClick={() => {
+                  const isTimed = addExerciseForPhase.phaseType !== 'main'
+                  addExercise(
+                    programId,
+                    addExerciseForPhase.phaseId,
+                    createDefaultExercise('Nouvel exercice', isTimed),
+                  )
+                  setAddExerciseForPhase(null)
+                }}
+                className="w-full text-left px-4 py-3 rounded-xl transition-all flex items-center gap-2 border border-dashed border-slate-700/30 hover:border-emerald-500/30 bg-slate-800/30 hover:bg-emerald-500/5 text-slate-400 hover:text-emerald-400"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125" />
+                </svg>
+                <span className="text-sm font-medium">Exercice personnalisé</span>
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
 
       {/* Delete phase confirm */}
